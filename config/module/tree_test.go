@@ -1,9 +1,13 @@
 package module
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/go-getter"
+	"github.com/hashicorp/terraform/helper/copy"
 )
 
 func TestTreeChild(t *testing.T) {
@@ -99,6 +103,49 @@ func TestTreeLoad_duplicate(t *testing.T) {
 	// This should get things
 	if err := tree.Load(storage, GetModeGet); err == nil {
 		t.Fatalf("should error")
+	}
+}
+
+func TestTreeLoad_copyable(t *testing.T) {
+	dir := tempDir(t)
+	storage := &getter.FolderStorage{StorageDir: dir}
+	tree := NewTree("", testConfig(t, "basic"))
+
+	// This should get things
+	if err := tree.Load(storage, GetModeGet); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	if !tree.Loaded() {
+		t.Fatal("should be loaded")
+	}
+
+	// This should no longer error
+	if err := tree.Load(storage, GetModeNone); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	// Now we copy the directory, this COPIES symlink values, and
+	// doesn't create symlinks themselves. That is important.
+	dir2 := tempDir(t)
+	os.RemoveAll(dir2)
+	if err := copy.CopyDir(dir, dir2); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	// Create a new tree just to be sure
+	{
+		tree := NewTree("", testConfig(t, "basic"))
+		storage := &getter.FolderStorage{StorageDir: dir2}
+
+		// This should not error since we already got it!
+		if err := tree.Load(storage, GetModeNone); err != nil {
+			t.Fatalf("err: %s", err)
+		}
+
+		if !tree.Loaded() {
+			t.Fatal("should be loaded")
+		}
 	}
 }
 
